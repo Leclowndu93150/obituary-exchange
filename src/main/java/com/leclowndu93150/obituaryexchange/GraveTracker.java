@@ -7,13 +7,16 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
-import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.entity.player.Player;
+import de.maxhenkel.gravestone.tileentity.GraveStoneTileEntity;
+import de.maxhenkel.gravestone.corelib.death.Death;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
@@ -81,6 +84,38 @@ public class GraveTracker extends SavedData {
     
     public boolean hasGrave(UUID deathId) {
         return graveLocations.containsKey(deathId);
+    }
+    
+    public boolean isGraveStillInWorld(UUID deathId, MinecraftServer server) {
+        GraveLocation location = graveLocations.get(deathId);
+        if (location == null) {
+            return false;
+        }
+        
+        ServerLevel level = server.getLevel(location.dimension);
+        if (level == null) {
+            return false;
+        }
+        
+        if (!level.isLoaded(location.pos)) {
+            return true;
+        }
+        
+        BlockEntity blockEntity = level.getBlockEntity(location.pos);
+        if (blockEntity instanceof GraveStoneTileEntity gravestone) {
+            Death death = gravestone.getDeath();
+            if (death != null && death.getId() != null && death.getId().equals(deathId)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    public void markGraveClaimed(UUID deathId, Player breaker) {
+        removeGrave(deathId);
+        ExchangeDataManager.markDeathAsRefunded(deathId);
+        LOGGER.info("Grave claimed for death ID {} by player {}", deathId, breaker.getName().getString());
     }
     
     @Override

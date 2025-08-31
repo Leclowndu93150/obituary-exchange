@@ -19,6 +19,7 @@ public class ExchangeDataManager extends SavedData {
 
     private final Map<UUID, Long> playerCooldowns = new HashMap<>();
     private final Set<UUID> exchangedDeaths = new HashSet<>();
+    private final Set<UUID> refundedDeaths = new HashSet<>();
 
     public static ExchangeDataManager get(MinecraftServer server) {
         DimensionDataStorage storage = server.overworld().getDataStorage();
@@ -79,6 +80,19 @@ public class ExchangeDataManager extends SavedData {
         exchangedDeaths.add(deathId);
         setDirty();
     }
+    
+    public boolean isDeathRefunded(UUID deathId) {
+        return refundedDeaths.contains(deathId);
+    }
+    
+    public static void markDeathAsRefunded(UUID deathId) {
+        MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            ExchangeDataManager dataManager = get(server);
+            dataManager.refundedDeaths.add(deathId);
+            dataManager.setDirty();
+        }
+    }
 
     @Override
     public CompoundTag save(CompoundTag compound) {
@@ -96,6 +110,12 @@ public class ExchangeDataManager extends SavedData {
             exchangedList.add(NbtUtils.createUUID(deathId));
         }
         compound.put("ExchangedDeaths", exchangedList);
+        
+        ListTag refundedList = new ListTag();
+        for (UUID deathId : refundedDeaths) {
+            refundedList.add(NbtUtils.createUUID(deathId));
+        }
+        compound.put("RefundedDeaths", refundedList);
 
         return compound;
     }
@@ -117,6 +137,13 @@ public class ExchangeDataManager extends SavedData {
             ListTag exchangedList = compound.getList("ExchangedDeaths", 11);
             for (int i = 0; i < exchangedList.size(); i++) {
                 data.exchangedDeaths.add(NbtUtils.loadUUID(exchangedList.get(i)));
+            }
+        }
+        
+        if (compound.contains("RefundedDeaths")) {
+            ListTag refundedList = compound.getList("RefundedDeaths", 11);
+            for (int i = 0; i < refundedList.size(); i++) {
+                data.refundedDeaths.add(NbtUtils.loadUUID(refundedList.get(i)));
             }
         }
 

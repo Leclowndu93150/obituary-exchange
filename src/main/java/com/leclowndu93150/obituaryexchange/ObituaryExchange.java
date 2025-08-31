@@ -17,7 +17,7 @@ import org.slf4j.Logger;
 public class ObituaryExchange {
 
     public static final String MODID = "obituaryexchange";
-    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final Logger LOGGER = LogUtils.getLogger();
 
     private static ObituaryExchangeConfig CONFIG;
 

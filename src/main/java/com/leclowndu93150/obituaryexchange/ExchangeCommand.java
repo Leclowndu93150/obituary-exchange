@@ -80,6 +80,19 @@ public class ExchangeCommand {
                     .withStyle(ChatFormatting.RED));
             return 0;
         }
+        
+        GraveTracker tracker = GraveTracker.getInstance(player.server);
+        if (tracker.isGraveStillInWorld(death.getId(), player.server)) {
+            source.sendFailure(Component.literal("You cannot exchange this obituary while the grave still exists in the world. Break the grave first!")
+                    .withStyle(ChatFormatting.RED));
+            return 0;
+        }
+        
+        if (dataManager.isDeathRefunded(death.getId())) {
+            source.sendFailure(Component.literal("This obituary cannot be exchanged as the grave has already been claimed")
+                    .withStyle(ChatFormatting.RED));
+            return 0;
+        }
 
         if (ObituaryExchange.getConfig().requireEmptyInventory.get()) {
             int emptySlots = 0;
