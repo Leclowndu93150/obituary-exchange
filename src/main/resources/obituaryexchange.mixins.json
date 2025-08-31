@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.leclowndu93150.obituaryexchange.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "obituaryexchange.refmap.json",
+  "mixins": [
+    "MixinObituaryItem",
+    "MixinGraveStoneTileEntity"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
