@@ -2,6 +2,8 @@ package com.leclowndu93150.obituaryexchange;
 
 import net.minecraftforge.common.ForgeConfigSpec;
 
+import java.util.List;
+
 public class ObituaryExchangeConfig {
 
     public static final ForgeConfigSpec SPEC;
@@ -17,6 +19,9 @@ public class ObituaryExchangeConfig {
     public final ForgeConfigSpec.IntValue graveSearchRadius;
     public final ForgeConfigSpec.BooleanValue breakGraveOnExchange;
     public final ForgeConfigSpec.BooleanValue searchAllLoadedChunks;
+    
+    public final ForgeConfigSpec.ConfigValue<List<? extends String>> whitelistedDimensions;
+    public final ForgeConfigSpec.ConfigValue<List<? extends String>> whitelistedStructures;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -66,6 +71,14 @@ public class ObituaryExchangeConfig {
         searchAllLoadedChunks = builder
                 .comment("Fallback to search all loaded chunks if grave not found nearby (can be performance intensive)")
                 .define("search_all_loaded_chunks", false);
+        
+        whitelistedDimensions = builder
+                .comment("List of dimension IDs where graves can be exchanged even if they exist and will be automatically destroyed (e.g., 'minecraft:the_nether', 'minecraft:the_end')")
+                .defineList("whitelisted_dimensions", java.util.Arrays.asList(), obj -> obj instanceof String);
+        
+        whitelistedStructures = builder
+                .comment("List of structure IDs where graves can be exchanged even if they exist and will be automatically destroyed (e.g., 'minecraft:stronghold', 'minecraft:fortress')")
+                .defineList("whitelisted_structures", java.util.Arrays.asList(), obj -> obj instanceof String);
         
         builder.pop();
     }

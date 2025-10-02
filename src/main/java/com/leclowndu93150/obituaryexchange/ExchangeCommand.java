@@ -12,8 +12,11 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -34,6 +37,10 @@ public class ExchangeCommand {
         LiteralArgumentBuilder<CommandSourceStack> exchangeCommand = Commands.literal("exchangeobituary")
                 .requires(source -> source.hasPermission(0))
                 .executes(context -> executeExchange(context.getSource()));
+        
+        LiteralArgumentBuilder<CommandSourceStack> retrieveCommand = Commands.literal("retrieveobituary")
+                .requires(source -> source.hasPermission(0))
+                .executes(context -> executeRetrieve(context.getSource()));
 
         LiteralArgumentBuilder<CommandSourceStack> resetCommand = Commands.literal("resetexchangecooldown")
                 .requires(source -> source.hasPermission(2))
@@ -42,6 +49,7 @@ public class ExchangeCommand {
                 .executes(context -> resetOwnCooldown(context.getSource()));
 
         dispatcher.register(exchangeCommand);
+        dispatcher.register(retrieveCommand);
         dispatcher.register(resetCommand);
     }
 
@@ -82,7 +90,10 @@ public class ExchangeCommand {
         }
         
         GraveTracker tracker = GraveTracker.getInstance(player.server);
-        if (tracker.isGraveStillInWorld(death.getId(), player.server)) {
+        boolean graveExists = tracker.isGraveStillInWorld(death.getId(), player.server);
+        boolean inWhitelistedLocation = isInWhitelistedLocation(tracker, death.getId(), player.server);
+        
+        if (graveExists && !inWhitelistedLocation) {
             source.sendFailure(Component.literal("You cannot exchange this obituary while the grave still exists in the world. Break the grave first!")
                     .withStyle(ChatFormatting.RED));
             return 0;
@@ -106,13 +117,23 @@ public class ExchangeCommand {
             }
         }
 
-        boolean graveFound = findAndBreakGrave(player, death);
-        if (graveFound) {
-            player.sendSystemMessage(Component.literal("Found and removed the associated grave to prevent item duplication")
-                    .withStyle(ChatFormatting.GRAY));
-        } else if (ObituaryExchange.getConfig().breakGraveOnExchange.get()) {
-            player.sendSystemMessage(Component.literal("No grave found for this death (it may have already been broken or never placed)")
-                    .withStyle(ChatFormatting.GRAY));
+        boolean shouldBreakGrave = ObituaryExchange.getConfig().breakGraveOnExchange.get() || inWhitelistedLocation;
+        
+        boolean graveFound = false;
+        if (shouldBreakGrave) {
+            graveFound = findAndBreakGrave(player, death);
+            if (graveFound) {
+                if (inWhitelistedLocation) {
+                    player.sendSystemMessage(Component.literal("Grave in whitelisted area has been automatically destroyed")
+                            .withStyle(ChatFormatting.GRAY));
+                } else {
+                    player.sendSystemMessage(Component.literal("Found and removed the associated grave to prevent item duplication")
+                            .withStyle(ChatFormatting.GRAY));
+                }
+            } else if (ObituaryExchange.getConfig().breakGraveOnExchange.get()) {
+                player.sendSystemMessage(Component.literal("No grave found for this death (it may have already been broken or never placed)")
+                        .withStyle(ChatFormatting.GRAY));
+            }
         }
 
         NonNullList<ItemStack> restoredItems = Main.GRAVESTONE.get().fillPlayerInventory(player, death);
@@ -282,6 +303,115 @@ public class ExchangeCommand {
         return true;
     }
 
+    private static int executeRetrieve(CommandSourceStack source) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("This command can only be used by players"));
+            return 0;
+        }
+        
+        GraveTracker tracker = GraveTracker.getInstance(player.server);
+        GraveTracker.GraveLocation nearbyGrave = tracker.findNearbyGraveForPlayer(
+            player.server, 
+            player.getUUID(), 
+            player.blockPosition(), 
+            player.level().dimension(), 
+            15
+        );
+        
+        if (nearbyGrave == null) {
+            source.sendFailure(Component.literal("No grave of yours found within 15 blocks")
+                    .withStyle(ChatFormatting.RED));
+            return 0;
+        }
+        
+        ServerLevel level = player.server.getLevel(nearbyGrave.dimension);
+        if (level == null) {
+            source.sendFailure(Component.literal("Unable to access grave dimension")
+                    .withStyle(ChatFormatting.RED));
+            return 0;
+        }
+        
+        BlockEntity blockEntity = level.getBlockEntity(nearbyGrave.pos);
+        if (!(blockEntity instanceof GraveStoneTileEntity grave)) {
+            source.sendFailure(Component.literal("Grave no longer exists at expected location")
+                    .withStyle(ChatFormatting.RED));
+            return 0;
+        }
+        
+        Death death = grave.getDeath();
+        if (death == null || !death.getPlayerUUID().equals(player.getUUID())) {
+            source.sendFailure(Component.literal("This grave does not belong to you")
+                    .withStyle(ChatFormatting.RED));
+            return 0;
+        }
+        
+        if (ObituaryExchange.getConfig().requireEmptyInventory.get()) {
+            int emptySlots = 0;
+            for (ItemStack stack : player.getInventory().items) {
+                if (stack.isEmpty()) emptySlots++;
+            }
+            if (emptySlots < 5) {
+                source.sendFailure(Component.literal("You need at least 5 empty inventory slots to retrieve")
+                        .withStyle(ChatFormatting.RED));
+                return 0;
+            }
+        }
+        
+        NonNullList<ItemStack> restoredItems = Main.GRAVESTONE.get().fillPlayerInventory(player, death);
+        
+        if (!restoredItems.isEmpty()) {
+            if (ObituaryExchange.getConfig().dropExcessItems.get()) {
+                for (ItemStack stack : restoredItems) {
+                    player.drop(stack, false);
+                }
+                player.sendSystemMessage(Component.literal("Some items didn't fit in your inventory and were dropped")
+                        .withStyle(ChatFormatting.YELLOW));
+            } else {
+                source.sendFailure(Component.literal("Not enough inventory space to restore all items")
+                        .withStyle(ChatFormatting.RED));
+                return 0;
+            }
+        }
+        
+        try {
+            death.getAllItems().clear();
+            death.getAdditionalItems().clear();
+            death.getMainInventory().clear();
+            death.getArmorInventory().clear();
+            death.getOffHandInventory().clear();
+        } catch (Exception e) {
+            LOGGER.warn("Failed to clear grave items for death ID {}: {}", death.getId(), e.getMessage());
+        }
+        
+        grave.setChanged();
+        level.destroyBlock(nearbyGrave.pos, false);
+        tracker.removeGrave(death.getId());
+        
+        player.sendSystemMessage(Component.literal("Successfully retrieved your obituary and destroyed the grave!")
+                .withStyle(ChatFormatting.GREEN));
+        
+        if (ObituaryExchange.getConfig().notifyAdmins.get()) {
+            Component adminMessage = Component.literal("[ObituaryExchange] ")
+                    .withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(player.getName().getString())
+                            .withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(" retrieved their own grave (Death ID: ")
+                            .withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal(death.getId().toString())
+                            .withStyle(ChatFormatting.YELLOW))
+                    .append(Component.literal(")")
+                            .withStyle(ChatFormatting.GRAY));
+
+            for (ServerPlayer admin : player.server.getPlayerList().getPlayers()) {
+                if (admin.hasPermissions(2) && admin != player) {
+                    admin.sendSystemMessage(adminMessage);
+                }
+            }
+        }
+        
+        return 1;
+    }
+
     private static int resetOwnCooldown(CommandSourceStack source) {
         if (!(source.getEntity() instanceof ServerPlayer player)) {
             source.sendFailure(Component.literal("This command can only be used by players"));
@@ -293,6 +423,38 @@ public class ExchangeCommand {
         source.sendSuccess(() -> Component.literal("Your cooldown has been reset")
                 .withStyle(ChatFormatting.GREEN), false);
         return 1;
+    }
+
+    private static boolean isInWhitelistedLocation(GraveTracker tracker, UUID deathId, MinecraftServer server) {
+        GraveTracker.GraveLocation graveLocation = tracker.getGraveLocation(deathId);
+        if (graveLocation == null) {
+            return false;
+        }
+        
+        String dimensionId = graveLocation.dimension.location().toString();
+        for (String whitelisted : ObituaryExchange.getConfig().whitelistedDimensions.get()) {
+            if (dimensionId.equals(whitelisted)) {
+                return true;
+            }
+        }
+        
+        ServerLevel level = server.getLevel(graveLocation.dimension);
+        if (level != null && level.isLoaded(graveLocation.pos)) {
+            var structureManager = level.structureManager();
+            var structureRegistry = server.registryAccess().registryOrThrow(Registries.STRUCTURE);
+            
+            for (String structureId : ObituaryExchange.getConfig().whitelistedStructures.get()) {
+                ResourceLocation structureLoc = new ResourceLocation(structureId);
+                var structureKey = ResourceKey.create(Registries.STRUCTURE, structureLoc);
+                
+                var structureStart = structureManager.getStructureWithPieceAt(graveLocation.pos, structureKey);
+                if (structureStart.isValid()) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 
     private static int resetAllCooldowns(CommandSourceStack source) {

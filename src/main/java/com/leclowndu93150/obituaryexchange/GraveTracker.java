@@ -118,6 +118,34 @@ public class GraveTracker extends SavedData {
         LOGGER.info("Grave claimed for death ID {} by player {}", deathId, breaker.getName().getString());
     }
     
+    @Nullable
+    public GraveLocation findNearbyGraveForPlayer(MinecraftServer server, UUID playerUUID, BlockPos playerPos, ResourceKey<Level> dimension, int radius) {
+        for (Map.Entry<UUID, GraveLocation> entry : graveLocations.entrySet()) {
+            GraveLocation location = entry.getValue();
+            
+            if (!location.dimension.equals(dimension)) {
+                continue;
+            }
+            
+            ServerLevel level = server.getLevel(location.dimension);
+            if (level == null || !level.isLoaded(location.pos)) {
+                continue;
+            }
+            
+            BlockEntity blockEntity = level.getBlockEntity(location.pos);
+            if (blockEntity instanceof GraveStoneTileEntity gravestone) {
+                Death death = gravestone.getDeath();
+                if (death != null && death.getPlayerUUID().equals(playerUUID)) {
+                    double distance = Math.sqrt(playerPos.distSqr(location.pos));
+                    if (distance <= radius) {
+                        return location;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+    
     @Override
     public CompoundTag save(CompoundTag compound) {
         ListTag list = new ListTag();

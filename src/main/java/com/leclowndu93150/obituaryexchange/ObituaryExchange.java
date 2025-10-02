@@ -24,7 +24,7 @@ public class ObituaryExchange {
     public ObituaryExchange() {
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::commonSetup);
 
-        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, ObituaryExchangeConfig.SPEC);
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, ObituaryExchangeConfig.SPEC);
         CONFIG = ObituaryExchangeConfig.INSTANCE;
 
         MinecraftForge.EVENT_BUS.register(this);
