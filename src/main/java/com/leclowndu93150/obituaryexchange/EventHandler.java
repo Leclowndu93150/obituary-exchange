@@ -22,8 +22,7 @@ public class EventHandler {
             if (death != null && death.getId() != null) {
                 GraveTracker tracker = GraveTracker.getInstance(event.getPlayer().getServer());
                 tracker.markGraveClaimed(death.getId(), event.getPlayer());
-                ObituaryExchange.LOGGER.info("Player {} claimed grave with death ID {}", 
-                    event.getPlayer().getName().getString(), death.getId());
+                ObituaryExchange.LOGGER.info("Player {} claimed grave with death ID {}", event.getPlayer().getName().getString(), death.getId());
             }
         }
     }

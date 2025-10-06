@@ -97,15 +97,28 @@ public class GraveTracker extends SavedData {
             return false;
         }
         
-        if (!level.isLoaded(location.pos)) {
-            return true;
+        int chunkX = location.pos.getX() >> 4;
+        int chunkZ = location.pos.getZ() >> 4;
+        
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                level.getChunkSource().getChunk(chunkX + dx, chunkZ + dz, true);
+            }
         }
         
-        BlockEntity blockEntity = level.getBlockEntity(location.pos);
-        if (blockEntity instanceof GraveStoneTileEntity gravestone) {
-            Death death = gravestone.getDeath();
-            if (death != null && death.getId() != null && death.getId().equals(deathId)) {
-                return true;
+        int searchRadius = 24;
+        for (int x = -searchRadius; x <= searchRadius; x++) {
+            for (int y = -searchRadius; y <= searchRadius; y++) {
+                for (int z = -searchRadius; z <= searchRadius; z++) {
+                    BlockPos checkPos = location.pos.offset(x, y, z);
+                    BlockEntity blockEntity = level.getBlockEntity(checkPos);
+                    if (blockEntity instanceof GraveStoneTileEntity gravestone) {
+                        Death death = gravestone.getDeath();
+                        if (death != null && death.getId() != null && death.getId().equals(deathId)) {
+                            return true;
+                        }
+                    }
+                }
             }
         }
         

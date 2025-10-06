@@ -71,7 +71,7 @@ public class ExchangeCommand {
 
         ItemStack obituaryStack = findObituary(player);
         if (obituaryStack.isEmpty()) {
-            source.sendFailure(Component.literal("You don't have an obituary in your inventory")
+            source.sendFailure(Component.literal("You must hold an obituary in your main hand")
                     .withStyle(ChatFormatting.RED));
             return 0;
         }
@@ -99,6 +99,18 @@ public class ExchangeCommand {
             return 0;
         }
         
+        if (graveExists && inWhitelistedLocation) {
+            GraveTracker.GraveLocation graveLocation = tracker.getGraveLocation(death.getId());
+            if (graveLocation != null) {
+                double distance = Math.sqrt(player.blockPosition().distSqr(graveLocation.pos));
+                if (distance > 15) {
+                    source.sendFailure(Component.literal("You must be within 15 blocks of the grave to exchange this obituary in a whitelisted location")
+                            .withStyle(ChatFormatting.RED));
+                    return 0;
+                }
+            }
+        }
+        
         if (dataManager.isDeathRefunded(death.getId())) {
             source.sendFailure(Component.literal("This obituary cannot be exchanged as the grave has already been claimed")
                     .withStyle(ChatFormatting.RED));
@@ -121,7 +133,7 @@ public class ExchangeCommand {
         
         boolean graveFound = false;
         if (shouldBreakGrave) {
-            graveFound = findAndBreakGrave(player, death);
+            graveFound = findAndBreakGrave(player, death, shouldBreakGrave);
             if (graveFound) {
                 if (inWhitelistedLocation) {
                     player.sendSystemMessage(Component.literal("Grave in whitelisted area has been automatically destroyed")
@@ -199,23 +211,6 @@ public class ExchangeCommand {
             return mainHand;
         }
 
-        ItemStack offHand = player.getItemInHand(InteractionHand.OFF_HAND);
-        if (offHand.getItem() == Main.OBITUARY.get()) {
-            return offHand;
-        }
-
-        for (ItemStack stack : player.getInventory().items) {
-            if (stack.getItem() == Main.OBITUARY.get()) {
-                return stack;
-            }
-        }
-
-        for (ItemStack stack : player.getInventory().armor) {
-            if (stack.getItem() == Main.OBITUARY.get()) {
-                return stack;
-            }
-        }
-
         return ItemStack.EMPTY;
     }
 
@@ -228,7 +223,7 @@ public class ExchangeCommand {
         return DeathManager.getDeath(player.serverLevel(), deathTag.getUUID("PlayerUUID"), deathTag.getUUID("DeathID"));
     }
     
-    private static boolean findAndBreakGrave(ServerPlayer player, Death death) {
+    private static boolean findAndBreakGrave(ServerPlayer player, Death death, boolean shouldBreak) {
         UUID deathId = death.getId();
         GraveTracker tracker = GraveTracker.getInstance(player.server);
 
@@ -236,7 +231,7 @@ public class ExchangeCommand {
         if (graveLocation != null) {
             ServerLevel level = player.server.getLevel(graveLocation.dimension);
             if (level != null) {
-                if (tryBreakGraveAt(level, graveLocation.pos, deathId, player)) {
+                if (tryBreakGraveAt(level, graveLocation.pos, deathId, shouldBreak)) {
                     tracker.removeGrave(deathId);
                     LOGGER.info("Broke tracked grave for death ID {} at {} in {}", 
                         deathId, graveLocation.pos, graveLocation.dimension.location());
@@ -256,7 +251,7 @@ public class ExchangeCommand {
                 for (int y = -searchRadius; y <= searchRadius; y++) {
                     for (int z = -searchRadius; z <= searchRadius; z++) {
                         BlockPos checkPos = playerPos.offset(x, y, z);
-                        if (tryBreakGraveAt(playerLevel, checkPos, deathId, player)) {
+                        if (tryBreakGraveAt(playerLevel, checkPos, deathId, shouldBreak)) {
                             LOGGER.info("Found and broke grave for death ID {} at {} via local search", 
                                 deathId, checkPos);
                             return true;
@@ -270,7 +265,7 @@ public class ExchangeCommand {
         return false;
     }
     
-    private static boolean tryBreakGraveAt(ServerLevel level, BlockPos pos, UUID deathId, ServerPlayer player) {
+    private static boolean tryBreakGraveAt(ServerLevel level, BlockPos pos, UUID deathId, boolean shouldBreak) {
         BlockEntity blockEntity = level.getBlockEntity(pos);
         if (!(blockEntity instanceof GraveStoneTileEntity grave)) {
             return false;
@@ -281,7 +276,7 @@ public class ExchangeCommand {
             return false;
         }
 
-        if (!ObituaryExchange.getConfig().breakGraveOnExchange.get()) {
+        if (!shouldBreak) {
             LOGGER.debug("Found grave for death ID {} but breaking is disabled", deathId);
             return false;
         }

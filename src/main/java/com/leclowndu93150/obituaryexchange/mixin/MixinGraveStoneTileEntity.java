@@ -33,18 +33,4 @@ public abstract class MixinGraveStoneTileEntity extends BlockEntity {
             }
         }
     }
-
-    @Override
-    public void setRemoved() {
-        super.setRemoved();
-        if (this.level != null && !this.level.isClientSide) {
-            Death death = getDeath();
-            if (death != null) {
-                UUID deathId = death.getId();
-                if (deathId != null && !deathId.equals(new UUID(0, 0))) {
-                    GraveTracker.getInstance(this.level.getServer()).removeGrave(deathId);
-                }
-            }
-        }
-    }
 }
